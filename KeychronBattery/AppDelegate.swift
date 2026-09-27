@@ -37,7 +37,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                let name = userInfo["name"] as? String,
                let level = userInfo["level"] as? Int {
                 self?.logger.info("Received Bluetooth battery update for \(name): \(level)%")
-                self?.statusMenuController?.updateBatteryDisplay(uuid: uuid, name: name, level: level)
+                self?.statusMenuController?.updateBatteryDisplay(uuid: uuid, name: name, level: level, defaultIcon: userInfo["icon"] as? String)
             }
         }
 

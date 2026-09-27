@@ -60,11 +60,11 @@ class StatusMenuController: NSObject {
         statusItem.menu = menu
     }
 
-    func updateBatteryDisplay(uuid: String, name: String, level: Int) {
+    func updateBatteryDisplay(uuid: String, name: String, level: Int, defaultIcon: String? = nil) {
         guard statusItem.button != nil else { return }
 
-        // Load saved icon preference or default to keyboard
-        let savedIcon = UserDefaults.standard.string(forKey: "icon_\(uuid)") ?? "keyboard"
+        // Load saved icon preference, else the source's hint, else a guess from the name
+        let savedIcon = UserDefaults.standard.string(forKey: "icon_\(uuid)") ?? defaultIcon ?? guessIcon(forName: name)
 
         devices[uuid] = DeviceInfo(name: name, level: level, iconName: savedIcon)
         updateDeviceMenuItem(uuid: uuid)
@@ -152,6 +152,14 @@ class StatusMenuController: NSObject {
 
         button.image = nil // Clear image to rely on emoji in text
         button.attributedTitle = fullAttributedTitle
+    }
+
+    private func guessIcon(forName name: String) -> String {
+        let lower = name.lowercased()
+        if ["mouse", "mx master", "mx anywhere", "trackpad", "trackball"].contains(where: lower.contains) { return "mouse" }
+        if ["airpods", "buds", "headphone", "headset", "beats"].contains(where: lower.contains) { return "headphones" }
+        if ["controller", "gamepad", "xbox", "dualsense", "dualshock"].contains(where: lower.contains) { return "gamecontroller" }
+        return "keyboard"
     }
 
     private func iconForName(_ name: String) -> String {

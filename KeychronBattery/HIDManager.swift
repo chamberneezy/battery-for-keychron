@@ -23,6 +23,19 @@ class HIDManager {
     private var rawHIDDevice: IOHIDDevice?
     private var isSearchingForBattery = false
 
+    // Devices that expose a standard HID battery element (Generic Device Controls 0x06 / Battery Strength 0x20).
+    // Keychron keyboards on Bluetooth Classic report this, but with Apple's vendor ID (0x05AC) instead of 0x3434.
+    private struct BatteryDevice {
+        let uuid: String
+        let name: String
+        let icon: String
+        let element: IOHIDElement
+    }
+    private var batteryDevices: [IOHIDDevice: BatteryDevice] = [:]
+    private var genericManager: IOHIDManager?
+    private let batteryStrengthUsage = 0x20 // HID Usage Tables: Generic Device Controls / Battery Strength
+    private let getValueWithUpdate: IOOptionBits = 0x00020000 // kIOHIDDeviceGetValueWithUpdate (not bridged to Swift)
+
     private let commandSequence: [BatteryCommand] = [
             // 1. VIA/QMK Standard
             BatteryCommand(reportId: 0,
@@ -94,6 +107,120 @@ class HIDManager {
             }
         } else {
             logger.info("🔎 No already-connected HID devices found at startup.")
+        }
+
+        startGenericBatteryMonitor()
+    }
+
+    // MARK: - Standard HID Battery (any vendor)
+
+    private func startGenericBatteryMonitor() {
+        // Reading keyboards requires the Input Monitoring permission; this prompts on first launch.
+        if IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) != kIOHIDAccessTypeGranted {
+            logger.info("🔐 Requesting Input Monitoring access...")
+            IOHIDRequestAccess(kIOHIDRequestTypeListenEvent)
+        }
+
+        let manager = IOHIDManagerCreate(kCFAllocatorDefault, IOOptionBits(kIOHIDOptionsTypeNone))
+        genericManager = manager
+
+        // Keyboards and mice; the battery element itself is checked per device
+        let matching: [[String: Any]] = [
+            [kIOHIDDeviceUsagePageKey: kHIDPage_GenericDesktop, kIOHIDDeviceUsageKey: kHIDUsage_GD_Keyboard],
+            [kIOHIDDeviceUsagePageKey: kHIDPage_GenericDesktop, kIOHIDDeviceUsageKey: kHIDUsage_GD_Mouse]
+        ]
+        IOHIDManagerSetDeviceMatchingMultiple(manager, matching as CFArray)
+
+        let context = UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
+        IOHIDManagerRegisterDeviceMatchingCallback(manager, { context, _, _, device in
+            let this = Unmanaged<HIDManager>.fromOpaque(context!).takeUnretainedValue()
+            this.registerBatteryDevice(device)
+        }, context)
+        IOHIDManagerRegisterDeviceRemovalCallback(manager, { context, _, _, device in
+            let this = Unmanaged<HIDManager>.fromOpaque(context!).takeUnretainedValue()
+            this.unregisterBatteryDevice(device)
+        }, context)
+
+        // Pushed battery reports (some devices send them when the level changes)
+        IOHIDManagerSetInputValueMatching(manager, [
+            kIOHIDElementUsagePageKey: kHIDPage_GenericDeviceControls,
+            kIOHIDElementUsageKey: batteryStrengthUsage
+        ] as CFDictionary)
+        IOHIDManagerRegisterInputValueCallback(manager, { context, _, _, value in
+            let this = Unmanaged<HIDManager>.fromOpaque(context!).takeUnretainedValue()
+            let device = IOHIDElementGetDevice(IOHIDValueGetElement(value))
+            this.reportBattery(device: device, level: IOHIDValueGetIntegerValue(value))
+        }, context)
+
+        IOHIDManagerScheduleWithRunLoop(manager, CFRunLoopGetCurrent(), CFRunLoopMode.defaultMode.rawValue)
+        let openResult = IOHIDManagerOpen(manager, IOOptionBits(kIOHIDOptionsTypeNone))
+        if openResult != kIOReturnSuccess {
+            logger.error("❌ Battery monitor open failed (\(String(format: "0x%08X", openResult))). Grant Input Monitoring in System Settings → Privacy & Security.")
+        }
+    }
+
+    private func registerBatteryDevice(_ device: IOHIDDevice) {
+        guard batteryDevices[device] == nil else { return }
+
+        // BLE devices are already handled by BluetoothBatteryMonitor via the GATT Battery Service
+        let transport = IOHIDDeviceGetProperty(device, kIOHIDTransportKey as CFString) as? String ?? ""
+        if transport == "Bluetooth Low Energy" { return }
+
+        let elements = IOHIDDeviceCopyMatchingElements(device, nil, IOOptionBits(kIOHIDOptionsTypeNone)) as? [IOHIDElement] ?? []
+        guard let element = elements.first(where: {
+            IOHIDElementGetUsagePage($0) == kHIDPage_GenericDeviceControls &&
+            IOHIDElementGetUsage($0) == batteryStrengthUsage &&
+            IOHIDElementGetType($0) == kIOHIDElementTypeInput_Misc
+        }) else { return }
+
+        let name = IOHIDDeviceGetProperty(device, kIOHIDProductKey as CFString) as? String ?? "HID Device"
+        let vid = IOHIDDeviceGetProperty(device, kIOHIDVendorIDKey as CFString) as? Int ?? 0
+        let pid = IOHIDDeviceGetProperty(device, kIOHIDProductIDKey as CFString) as? Int ?? 0
+        let serial = IOHIDDeviceGetProperty(device, kIOHIDSerialNumberKey as CFString) as? String
+        let usage = IOHIDDeviceGetProperty(device, kIOHIDPrimaryUsageKey as CFString) as? Int ?? 0
+
+        let info = BatteryDevice(
+            uuid: "HID-\(serial ?? String(format: "%04X-%04X", vid, pid))",
+            name: name,
+            icon: usage == kHIDUsage_GD_Mouse ? "mouse" : "keyboard",
+            element: element
+        )
+        batteryDevices[device] = info
+        logger.info("🔋 Battery-capable HID device: \(name) [\(transport)]")
+        readBattery(device: device, info: info)
+    }
+
+    private func unregisterBatteryDevice(_ device: IOHIDDevice) {
+        guard let info = batteryDevices.removeValue(forKey: device) else { return }
+        logger.info("🔌 \(info.name) disconnected")
+        postBattery(info: info, level: -1)
+    }
+
+    private func readBattery(device: IOHIDDevice, info: BatteryDevice) {
+        // The cached value is 0 until the device sends a report, so force a GET_REPORT
+        var value = Unmanaged.passUnretained(IOHIDValueCreateWithIntegerValue(kCFAllocatorDefault, info.element, 0, 0))
+        let result = IOHIDDeviceGetValueWithOptions(device, info.element, &value, getValueWithUpdate)
+        guard result == kIOReturnSuccess else {
+            logger.error("⚠️ Battery read failed for \(info.name): \(String(format: "0x%08X", result))")
+            return
+        }
+        reportBattery(device: device, level: IOHIDValueGetIntegerValue(value.takeUnretainedValue()))
+    }
+
+    private func reportBattery(device: IOHIDDevice, level: Int) {
+        // 0 is what an un-refreshed element reports, so treat it as "no reading" rather than an empty battery
+        guard let info = batteryDevices[device], (1...100).contains(level) else { return }
+        postBattery(info: info, level: level)
+    }
+
+    private func postBattery(info: BatteryDevice, level: Int) {
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: .didUpdateBluetoothBattery, object: nil, userInfo: [
+                "uuid": info.uuid,
+                "name": info.name,
+                "level": level,
+                "icon": info.icon
+            ])
         }
     }
 
@@ -255,12 +382,19 @@ class HIDManager {
         if let manager = manager {
             IOHIDManagerUnscheduleFromRunLoop(manager, CFRunLoopGetCurrent(), CFRunLoopMode.defaultMode.rawValue)
         }
+        if let genericManager = genericManager {
+            IOHIDManagerUnscheduleFromRunLoop(genericManager, CFRunLoopGetCurrent(), CFRunLoopMode.defaultMode.rawValue)
+        }
         deviceBuffers.values.forEach { $0.deallocate() }
     }
 
     // MARK: - Battery Communication Logic
 
     func requestBatteryUpdate() {
+            for (device, info) in batteryDevices {
+                readBattery(device: device, info: info)
+            }
+
             guard let device = rawHIDDevice else { return }
 
             // If we are already running a sequence, don't restart it
