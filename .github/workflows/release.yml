@@ -34,6 +34,9 @@ jobs:
                      -scheme KeychronBattery \
                      -configuration Release \
                      -derivedDataPath ./build \
+                     -destination "generic/platform=macOS" \
+                     ARCHS="arm64 x86_64" \
+                     ONLY_ACTIVE_ARCH=NO \
                      CODE_SIGN_IDENTITY="-" \
                      CODE_SIGN_STYLE=Manual \
                      DEVELOPMENT_TEAM=""
@@ -41,7 +44,7 @@ jobs:
       - name: Verify app bundle
         run: |
           APP="build/Build/Products/Release/$APP_NAME.app"
-          file "$APP/Contents/MacOS/$APP_NAME"
+          lipo -archs "$APP/Contents/MacOS/$APP_NAME"
           codesign -d --entitlements - "$APP"
           du -sh "$APP"
 

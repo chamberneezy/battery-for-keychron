@@ -105,6 +105,7 @@ Or build from the command line with an ad-hoc signature:
 ```bash
 xcodebuild -project KeychronBattery.xcodeproj -scheme KeychronBattery \
            -configuration Release -derivedDataPath ./build \
+           -destination "generic/platform=macOS" ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO \
            CODE_SIGN_IDENTITY="-" CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=""
 ```
 
