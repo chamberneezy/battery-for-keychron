@@ -11,7 +11,7 @@ import os
 
 @main
 class AppDelegate: NSObject, NSApplicationDelegate {
-   private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "dev.rrazvan.keychron.battery", category: "AppDelegate")
+   private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "dev.chamberneezy.BatteryForKeychron", category: "AppDelegate")
 
     let bluetoothMonitor = BluetoothBatteryMonitor()
     let hidManager = HIDManager()

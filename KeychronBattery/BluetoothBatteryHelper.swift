@@ -7,7 +7,7 @@ extension Notification.Name {
 }
 
 class BluetoothBatteryMonitor: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
-    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "dev.rrazvan.keychron.battery", category: "BluetoothMonitor")
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "dev.chamberneezy.BatteryForKeychron", category: "BluetoothMonitor")
     private var centralManager: CBCentralManager!
     private var connectedPeripherals: [UUID: CBPeripheral] = [:]
 

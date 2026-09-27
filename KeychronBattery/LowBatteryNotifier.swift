@@ -3,7 +3,7 @@ import UserNotifications
 import os
 
 class LowBatteryNotifier: NSObject, UNUserNotificationCenterDelegate {
-    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "dev.rrazvan.keychron.battery", category: "LowBatteryNotifier")
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "dev.chamberneezy.BatteryForKeychron", category: "LowBatteryNotifier")
 
     static let threshold = 20
     // Re-arm only after the device is charged back above this, so a level hovering around 20% alerts once

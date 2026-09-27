@@ -1,324 +1,136 @@
-# Keychron Battery Level Monitor
+# Battery for Keychron
 
-A lightweight macOS menu bar application that displays the battery level of your Keychron keyboard and other Bluetooth peripherals in real-time.
+A lightweight macOS menu bar app that shows the battery level of your Keychron keyboard, and other Bluetooth devices like your mouse and headphones, with an alert when a battery gets low.
 
-![Menu Bar Preview](https://img.shields.io/badge/macOS-13.0+-blue.svg)
+![Menu bar preview](./image.png)
 
-![Preview](./image.png)
+> Based on [rxrdev/keychron-battery-level](https://github.com/rxrdev/keychron-battery-level) by Razvan. This fork fixes keyboards connected over Bluetooth, which did not show up in the original app, and adds low battery alerts and energy-saving refresh settings. Not affiliated with Keychron.
+
+## What's different from the original
+
+- **Keychron keyboards on Bluetooth now show up.** Keyboards such as the K6 connect over Bluetooth Classic and identify with Apple's vendor ID, so the original app never found them (see [rxrdev/keychron-battery-level#2](https://github.com/rxrdev/keychron-battery-level/issues/2)). This version reads the standard HID battery field these keyboards report.
+- **Low battery alert.** A notification when a device drops to 20%, sent once per device and not repeated until it has been charged above 25%.
+- **Gentler on your Mac's battery.** Refreshes every 15 minutes by default (10, 15 or 20 in the menu, was 5), lets macOS batch the wake-ups, and refreshes once after wake from sleep.
+- **Correct icons.** Mice, headphones and controllers get their own icon instead of all showing as a keyboard.
 
 ## Features
 
-- 🔋 **Real-time Battery Monitoring** - Shows battery percentage for connected devices in the menu bar
-- 🖱️ **Multi-Device Support** - Monitor multiple devices simultaneously (Keyboards, Mice, Headphones, Gamepads)
-- 🎭 **Customizable Icons** - Assign custom icons (⌨️, 🖱️, 🎮, 🎧) to each device via the menu
-- 🎨 **Color-coded Display** - Battery level changes color (red ≤10%, orange ≤30%, default >30%)
-- 🔄 **Auto-refresh** - Updates battery level every 5 minutes automatically
-- 🚀 **Launch at Login** - Optional setting to start the app automatically when you log in
-- 📡 **Bluetooth & HID** - Uses CoreBluetooth and IOKit (HID) to communicate with devices
-- 🌓 **Dark Mode Support** - Menu bar icon adapts to system appearance
+- 🔋 Battery percentage for each connected device in the menu bar, e.g. `⌨️ 91%  🖱️ 95%`
+- 🔔 Low battery notification at 20% (toggle in the menu)
+- ⏱️ Refresh every 10, 15 or 20 minutes, plus **Refresh Battery** (⌘R) on demand
+- 🎨 Color-coded levels: red at 10% or below, orange at 30% or below
+- 🎭 Per-device icon: hover a device in the menu to pick Keyboard, Mouse, Gamepad or Headphones
+- 🚀 Launch at Login
+
+## Supported devices
+
+| Device | Status |
+|---|---|
+| Keychron K6 on Bluetooth | ✅ Confirmed |
+| Other Keychron keyboards on Bluetooth (K2, K7, K8, …) | Likely: any keyboard that reports the standard HID battery field should work. Please open an issue with your result |
+| Bluetooth Low Energy devices with a battery service (e.g. Logitech MX Master 3S) | ✅ Confirmed |
+| Keychron over USB cable or 2.4 GHz dongle | Experimental (original Raw HID code, untested) |
 
 ## Requirements
 
-- macOS 13.0 or later
-- Xcode 14.0 or later (for building)
-- Keychron keyboard with Bluetooth connectivity
+- macOS 15.7 or later
 
 ## Installation
 
-### Using Pre-built DMG
+1. Download the latest `BatteryForKeychron-vX.X.X.dmg` from [Releases](https://github.com/chamberneezy/battery-for-keychron/releases).
+2. Open the DMG and drag **Battery for Keychron** to Applications.
+3. **First launch:** the app isn't notarized by Apple, so right-click it and choose **Open**, then **Open** again. If macOS still blocks it, go to System Settings → Privacy & Security and click **Open Anyway**.
+4. Allow **Bluetooth** and **Notifications** when prompted.
+5. Go to System Settings → Privacy & Security → **Input Monitoring**, turn on **Battery for Keychron**, then quit and reopen the app.
 
-1. Download `KeychronBattery.dmg` from the releases
-2. Open the DMG file
-3. Drag the app to your Applications folder
-4. Launch the app from Applications
-5. Grant Bluetooth permissions when prompted
+### Why Input Monitoring?
 
-### Building from Source
+macOS protects keyboards, so any app that reads from a keyboard, even just its battery level, needs this permission. The app does not read or record keystrokes. It only requests the battery report.
 
-See the [Building](#building) section below.
+### Updating
+
+macOS ties Input Monitoring to the exact build of the app. After installing a new version, remove **Battery for Keychron** from Input Monitoring with **–**, add it again with **+**, and relaunch.
 
 ## Usage
 
-1. **Launch the app** - The keyboard battery percentage will appear in your menu bar
-2. **Click the menu bar icon** to access options:
-   - **Device List** - See all connected devices and their battery levels
-   - **Customize Icons** - Hover over a device in the menu to change its icon (Keyboard, Mouse, Gamepad, Headphones)
-   - **Refresh Battery** - Manually update the battery level
-   - **Launch at Login** - Toggle automatic startup
-   - **Quit** - Exit the application
+Click the menu bar item to see:
 
-The battery level updates automatically every 5 minutes and displays as:
-- `--% ` when disconnected or initializing
-- `⌨️ 80%` (or configured icon) with color coding based on charge level
-- Multiple devices are shown side-by-side: `⌨️ 80% 🖱️ 45%`
-
-## Building
-
-### Prerequisites
-
-- macOS 13.0 or later
-- Xcode 14.0 or later
-- Apple Developer account (for code signing)
-
-### Build Steps
-
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd keychron-battery-level
-   ```
-
-2. **Open in Xcode**
-   ```bash
-   open KeychronBattery.xcodeproj
-   ```
-
-3. **Configure Signing**
-   - Select the project in the navigator
-   - Go to "Signing & Capabilities" tab
-   - Select your development team
-   - Ensure "Automatically manage signing" is enabled
-
-4. **Build the app**
-   - Select `KeychronBattery` scheme
-   - Choose `Any Mac` as the destination
-   - Press `⌘B` to build, or `⌘R` to build and run
-
-5. **Run the app**
-   - Press `⌘R` or click the Run button
-   - Grant Bluetooth permissions when prompted
-
-### Debug Build
-
-For development and testing:
-```bash
-xcodebuild -project KeychronBattery.xcodeproj -scheme KeychronBattery -configuration Debug
-```
-
-### Release Build
-
-For distribution:
-```bash
-xcodebuild -project KeychronBattery.xcodeproj -scheme KeychronBattery -configuration Release
-```
-
-The compiled app will be located at:
-```
-build/Release/KeychronBattery.app
-```
-
-## Creating a Release
-
-### Method 1: Manual DMG Creation
-
-1. **Build for Release**
-   ```bash
-   xcodebuild -project KeychronBattery.xcodeproj \
-              -scheme KeychronBattery \
-              -configuration Release \
-              -derivedDataPath ./build
-   ```
-
-2. **Locate the App**
-   ```bash
-   cd build/Build/Products/Release
-   ```
-
-3. **Create DMG using Disk Utility**
-   - Open Disk Utility
-   - File → New Image → Image from Folder
-   - Select the `KeychronBattery.app`
-   - Save as `KeychronBattery.dmg`
-
-### Method 2: Using Command Line
-
-1. **Build the app** (if not already built)
-   ```bash
-   xcodebuild -project KeychronBattery.xcodeproj \
-              -scheme KeychronBattery \
-              -configuration Release \
-              -derivedDataPath ./build
-   ```
-
-2. **Create a temporary directory**
-   ```bash
-   mkdir -p dmg-staging
-   cp -R build/Build/Products/Release/KeychronBattery.app dmg-staging/
-   ```
-
-3. **Create DMG**
-   ```bash
-   hdiutil create -volname "Keychron Battery Monitor" \
-                  -srcfolder dmg-staging \
-                  -ov -format UDZO \
-                  KeychronBattery.dmg
-   ```
-
-4. **Clean up**
-   ```bash
-   rm -rf dmg-staging
-   ```
-
-### Method 3: Using create-dmg Tool
-
-This method creates a more polished DMG with custom styling (requires `create-dmg` tool).
-
-1. **Install create-dmg** (if not already installed)
-   ```bash
-   brew install create-dmg
-   ```
-
-2. **Build the app** (if not already built)
-   ```bash
-   xcodebuild -project KeychronBattery.xcodeproj \
-              -scheme KeychronBattery \
-              -configuration Release \
-              -derivedDataPath ./build
-   ```
-
-3. **Prepare staging directory**
-   ```bash
-   mkdir -p dmg-staging
-   cp -R build/Release/KeychronBattery.app dmg-staging/
-   ```
-
-4. **Create styled DMG**
-   ```bash
-   create-dmg \
-     --volname "KeychronBattery" \
-     --volicon "KeychronBattery/Assets.xcassets/AppIcon.appiconset/icon_512x512.png" \
-     --window-pos 200 120 \
-     --window-size 800 400 \
-     --icon-size 100 \
-     --icon "KeychronBattery.app" 175 120 \
-     --hide-extension "KeychronBattery.app" \
-     --app-drop-link 625 120 \
-     "KeychronBattery_vX.X.X.dmg" \
-     "dmg-staging/"
-   ```
-
-5. **Clean up**
-   ```bash
-   rm -rf dmg-staging
-   ```
-
-### Code Signing & Notarization (Optional)
-
-For distribution outside of personal use:
-
-1. **Sign the app**
-   ```bash
-   codesign --deep --force --verify --verbose \
-            --sign "Developer ID Application: Your Name" \
-            KeychronBattery.app
-   ```
-
-2. **Notarize with Apple**
-   ```bash
-   xcrun notarytool submit KeychronBattery.dmg \
-                           --apple-id your@email.com \
-                           --team-id TEAMID \
-                           --password app-specific-password
-   ```
-
-3. **Staple the notarization**
-   ```bash
-   xcrun stapler staple KeychronBattery.dmg
-   ```
-
-## GitHub Releases with Actions
-
-The project includes automated releases using GitHub Actions. When you push a version tag, it automatically builds the app, creates a DMG, and publishes a GitHub release.
-
-### Creating a New Release
-
-1. **Commit all changes**
-   ```bash
-   git add .
-   git commit -m "Release version 1.0.0"
-   ```
-
-2. **Create and push a version tag**
-   ```bash
-   git tag v1.0.0
-   git push origin v1.0.0
-   ```
-
-3. **GitHub Actions will automatically**:
-   - Build the app for macOS
-   - Create a DMG file named `KeychronBattery-v1.0.0.dmg`
-   - Create a GitHub release with the DMG attached
-   - Add release notes automatically
-
-4. **View the release** - Go to your GitHub repository → Releases tab (right sidebar)
-
-### Version Numbering
-
-Follow semantic versioning (MAJOR.MINOR.PATCH):
-- `v1.0.0` - Initial release
-- `v1.0.1` - Bug fixes
-- `v1.1.0` - New features (backwards compatible)
-- `v2.0.0` - Breaking changes
-
-### Manual Release Steps
-
-If you prefer not to use GitHub Actions, you can create releases manually:
-
-1. Build and create the DMG (see [Creating a Release](#creating-a-release))
-2. Go to your GitHub repository → Releases → Draft a new release
-3. Create a new tag (e.g., `v1.0.0`)
-4. Upload the DMG file
-5. Add release notes
-6. Publish release
-
-## Project Structure
-
-```
-KeychronBattery/
-├── AppDelegate.swift              # Main app delegate and menu bar setup
-├── BluetoothBatteryHelper.swift   # CoreBluetooth battery monitoring
-├── HIDManager.swift               # HID device management (alternative method)
-├── main.swift                     # App entry point
-├── Info.plist                     # App configuration and permissions
-├── KeychronBattery.entitlements   # Bluetooth entitlements
-└── Assets.xcassets/               # App icons and menu bar icon
-```
+- **Device list**: each device with its battery level; hover to change its icon
+- **Refresh Battery** (⌘R)
+- **Launch at Login**
+- **Refresh Every**: 10, 15 or 20 minutes
+- **Alert at 20%**: turn low battery notifications on or off. Hold **⌥ Option** to reveal **Send Test Alert**
+- **Quit**
 
 ## Troubleshooting
 
-### Battery Level Shows "--%" 
+**The keyboard doesn't appear, only the mouse**
+- Check Input Monitoring is on for the app (remove and re-add it after an update), then quit and reopen the app.
+- Check your keyboard is connected in System Settings → Bluetooth.
 
-- Ensure your Keychron keyboard is connected via Bluetooth
-- Check that Bluetooth is enabled on your Mac
-- Try clicking "Refresh Battery" from the menu
-- Verify the app has Bluetooth permissions in System Settings → Privacy & Security → Bluetooth
+**Shows `--%`**
+- Make sure Bluetooth is on and the app is allowed under Privacy & Security → Bluetooth.
+- Click **Refresh Battery**.
 
-### App Doesn't Launch at Login
+**No low battery notification**
+- Hold ⌥ Option in the menu and click **Send Test Alert**. If nothing appears, allow notifications for the app in System Settings → Notifications.
 
-- Re-toggle the "Launch at Login" option
-- Check System Settings → General → Login Items
-- Ensure the app is in your Applications folder
+**Logs**
+```bash
+/usr/bin/log show --last 10m --info --predicate 'process == "Battery for Keychron"'
+```
 
-### Permission Denied
+## How it works
 
-- Grant Bluetooth access in System Settings → Privacy & Security → Bluetooth
-- Restart the app after granting permissions
+- **Bluetooth Low Energy devices** (most mice, headphones) are read through CoreBluetooth's Battery Service (`0x180F`).
+- **Bluetooth Classic keyboards** are read through IOKit HID: the app finds keyboards and mice that expose the Generic Device Controls / Battery Strength element (usage page `0x06`, usage `0x20`) and requests it with a GET_REPORT.
+- The app runs in the App Sandbox with a temporary exception for `IOHIDLibUserClient`, which is needed to open HID devices from a sandboxed app. Because of this exception, the app cannot be distributed through the Mac App Store.
 
-## Technical Details
+## Building
 
-- **Language**: Swift
-- **Frameworks**: CoreBluetooth, IOKit, ServiceManagement
-- **Architecture**: Universal (Apple Silicon & Intel)
-- **Minimum Target**: macOS 13.0
+1. Open `KeychronBattery.xcodeproj` in Xcode.
+2. Under **Signing & Capabilities**, select your own team.
+3. Press ⌘R.
 
-## License
+Or build from the command line with an ad-hoc signature:
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+```bash
+xcodebuild -project KeychronBattery.xcodeproj -scheme KeychronBattery \
+           -configuration Release -derivedDataPath ./build \
+           CODE_SIGN_IDENTITY="-" CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=""
+```
 
-## Contributing
+The app is at `build/Build/Products/Release/Battery for Keychron.app`.
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+### Releases
+
+Pushing a version tag builds the app, creates a DMG and publishes a GitHub release through `.github/workflows/release.yml`:
+
+```bash
+git tag v2.0.0
+git push origin v2.0.0
+```
+
+## Project structure
+
+```
+KeychronBattery/
+├── AppDelegate.swift             # App lifecycle, refresh timer, wake handling
+├── BluetoothBatteryHelper.swift  # CoreBluetooth battery monitoring (BLE devices)
+├── HIDManager.swift              # IOKit HID battery reading (Bluetooth Classic keyboards)
+├── LowBatteryNotifier.swift      # 20% low battery notifications
+├── StatusMenuController.swift    # Menu bar item and menu
+├── Info.plist
+├── KeychronBattery.entitlements  # Bluetooth + HID sandbox exception
+└── Assets.xcassets/
+```
 
 ## Credits
 
-Created by Razvan
+Built on [keychron-battery-level](https://github.com/rxrdev/keychron-battery-level) by Razvan. Thanks for the original app.
+
+Keychron is a trademark of Keychron. This project is not affiliated with or endorsed by Keychron.
+
+## License
+
+MIT, see [LICENSE](LICENSE).
