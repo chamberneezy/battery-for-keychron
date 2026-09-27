@@ -2,6 +2,8 @@
 
 A lightweight macOS menu bar app that shows the battery level of your Keychron keyboard, and other Bluetooth devices like your mouse and headphones, with an alert when a battery gets low.
 
+**✅ Tested with the Keychron K6 over Bluetooth on macOS.** See your Keychron K6 battery percentage right in the Mac menu bar, and get a notification when it drops to 20%.
+
 ![Menu bar preview](./image.png)
 
 > Based on [rxrdev/keychron-battery-level](https://github.com/rxrdev/keychron-battery-level) by Razvan. This fork fixes keyboards connected over Bluetooth, which did not show up in the original app, and adds low battery alerts and energy-saving refresh settings. Not affiliated with Keychron.
@@ -26,10 +28,16 @@ A lightweight macOS menu bar app that shows the battery level of your Keychron k
 
 | Device | Status |
 |---|---|
-| Keychron K6 on Bluetooth | ✅ Confirmed |
+| Keychron K6 on Bluetooth | ✅ Tested and working (battery % in the menu bar, low battery alert) |
 | Other Keychron keyboards on Bluetooth (K2, K7, K8, …) | Likely: any keyboard that reports the standard HID battery field should work. Please open an issue with your result |
 | Bluetooth Low Energy devices with a battery service (e.g. Logitech MX Master 3S) | ✅ Confirmed |
 | Keychron over USB cable or 2.4 GHz dongle | Experimental (original Raw HID code, untested) |
+
+## Keychron K6 battery level on Mac
+
+macOS doesn't show the battery level of a Keychron K6 connected over Bluetooth: it isn't in the Bluetooth menu, in System Settings, or in the original Keychron battery app. Battery for Keychron was built and tested with a Keychron K6 (Bluetooth, firmware 1.1.11) on macOS and shows its battery percentage in the menu bar, for example `⌨️ 91%`, updated every 10 to 20 minutes and after waking from sleep.
+
+The K6 connects over Bluetooth Classic and identifies itself with Apple's vendor ID instead of Keychron's, which is why other tools miss it. This app reads the keyboard's standard HID battery report instead. Other Keychron keyboards that connect the same way (K2, K7, K8 and others) will likely work too. If you try one, please [open an issue](https://github.com/chamberneezy/battery-for-keychron/issues) with the result.
 
 ## Requirements
 
