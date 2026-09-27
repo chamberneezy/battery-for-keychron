@@ -16,9 +16,26 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     let bluetoothMonitor = BluetoothBatteryMonitor()
     let hidManager = HIDManager()
 
+    let lowBatteryNotifier = LowBatteryNotifier()
+
     var statusMenuController: StatusMenuController?
 
     private var startupRetryCount = 0
+    private var refreshTimer: Timer?
+
+    static let refreshIntervalOptions = [10, 15, 20] // minutes
+    private let refreshIntervalKey = "refreshIntervalMinutes"
+
+    var refreshIntervalMinutes: Int {
+        get {
+            let saved = UserDefaults.standard.integer(forKey: refreshIntervalKey)
+            return Self.refreshIntervalOptions.contains(saved) ? saved : 15
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: refreshIntervalKey)
+            scheduleRefreshTimer()
+        }
+    }
 
     static func main() {
         let app = NSApplication.shared
@@ -38,6 +55,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                let level = userInfo["level"] as? Int {
                 self?.logger.info("Received Bluetooth battery update for \(name): \(level)%")
                 self?.statusMenuController?.updateBatteryDisplay(uuid: uuid, name: name, level: level, defaultIcon: userInfo["icon"] as? String)
+                self?.lowBatteryNotifier.check(uuid: uuid, name: name, level: level)
             }
         }
 
@@ -46,6 +64,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.logger.info("Received HID battery update: \(level)%")
                 // Use a fixed UUID for HID device to treat it as a distinct device
                 self?.statusMenuController?.updateBatteryDisplay(uuid: "HID-DEVICE-001", name: "Wired/HID Device", level: level)
+                self?.lowBatteryNotifier.check(uuid: "HID-DEVICE-001", name: "Wired/HID Device", level: level)
             }
         }
 
@@ -54,18 +73,36 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self.scheduleStartupRetries()
         }
 
-        Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
-            self?.refresh()
+        lowBatteryNotifier.start()
+        scheduleRefreshTimer()
+
+        // Battery drains while asleep; refresh once on wake instead of polling more often
+        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 10) { self?.refresh() }
         }
     }
 
+    private func scheduleRefreshTimer() {
+        refreshTimer?.invalidate()
+        let interval = TimeInterval(refreshIntervalMinutes * 60)
+        let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
+            self?.refresh()
+        }
+        // Generous tolerance lets macOS batch this wake-up with others to save energy
+        timer.tolerance = interval * 0.2
+        RunLoop.main.add(timer, forMode: .common)
+        refreshTimer = timer
+        logger.info("⏱️ Refreshing every \(self.refreshIntervalMinutes) minutes")
+    }
+
     private func scheduleStartupRetries() {
-        // Retry every 10 seconds for the first 2 minutes (12 times) to catch devices connecting after boot
-        Timer.scheduledTimer(withTimeInterval: 10.0, repeats: true) { [weak self] timer in
+        // Devices that connect later are picked up by the HID/Bluetooth connect callbacks,
+        // so a few early retries are enough to cover a slow Bluetooth start after login
+        Timer.scheduledTimer(withTimeInterval: 20.0, repeats: true) { [weak self] timer in
             guard let self = self else { return }
             self.startupRetryCount += 1
 
-            if self.startupRetryCount > 12 {
+            if self.startupRetryCount > 3 {
                 timer.invalidate()
                 self.logger.info("Startup retries finished.")
             } else {

@@ -52,6 +52,33 @@ class StatusMenuController: NSObject {
         launchItem.state = (appDelegate?.isLaunchAtLoginEnabled() ?? false) ? .on : .off
         menu.addItem(launchItem)
 
+        // Refresh interval submenu
+        let intervalItem = NSMenuItem(title: "Refresh Every", action: nil, keyEquivalent: "")
+        let intervalMenu = NSMenu()
+        let currentInterval = appDelegate?.refreshIntervalMinutes ?? 15
+        for minutes in AppDelegate.refreshIntervalOptions {
+            let item = NSMenuItem(title: "\(minutes) Minutes", action: #selector(intervalClicked(_:)), keyEquivalent: "")
+            item.target = self
+            item.tag = minutes
+            item.state = minutes == currentInterval ? .on : .off
+            intervalMenu.addItem(item)
+        }
+        intervalItem.submenu = intervalMenu
+        menu.addItem(intervalItem)
+
+        // Low battery alert toggle
+        let alertItem = NSMenuItem(title: "Alert at \(LowBatteryNotifier.threshold)%", action: #selector(toggleAlertClicked(_:)), keyEquivalent: "")
+        alertItem.target = self
+        alertItem.state = (appDelegate?.lowBatteryNotifier.isEnabled ?? true) ? .on : .off
+        menu.addItem(alertItem)
+
+        // Hold Option to reveal: confirms notifications are allowed without waiting for a low battery
+        let testAlertItem = NSMenuItem(title: "Send Test Alert", action: #selector(testAlertClicked), keyEquivalent: "")
+        testAlertItem.target = self
+        testAlertItem.keyEquivalentModifierMask = .option
+        testAlertItem.isAlternate = true
+        menu.addItem(testAlertItem)
+
         menu.addItem(NSMenuItem.separator())
 
         // Quit Item
@@ -186,6 +213,22 @@ class StatusMenuController: NSObject {
             delegate.enableLaunchAtLogin()
             sender.state = .on
         }
+    }
+
+    @objc private func intervalClicked(_ sender: NSMenuItem) {
+        appDelegate?.refreshIntervalMinutes = sender.tag
+        sender.menu?.items.forEach { $0.state = .off }
+        sender.state = .on
+    }
+
+    @objc private func toggleAlertClicked(_ sender: NSMenuItem) {
+        guard let notifier = appDelegate?.lowBatteryNotifier else { return }
+        notifier.isEnabled.toggle()
+        sender.state = notifier.isEnabled ? .on : .off
+    }
+
+    @objc private func testAlertClicked() {
+        appDelegate?.lowBatteryNotifier.sendTest()
     }
 
     @objc private func changeIconClicked(_ sender: NSMenuItem) {
