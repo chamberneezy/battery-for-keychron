@@ -33,9 +33,17 @@ Output: `build/Build/Products/Release/Battery for Keychron.app`. Without the `AR
 
 - The Keychron K6 on Bluetooth reports Apple's VID 0x05AC / PID 0x0250, not 0x3434.
 - Reading keyboards needs Input Monitoring (TCC). The App Sandbox also blocks HID unless the entitlement `com.apple.security.temporary-exception.iokit-user-client-class` = `IOHIDLibUserClient` is present (kernel log: `deny iokit-open-user-client IOHIDLibUserClient`). This exception rules out the Mac App Store.
-- Ad-hoc builds change code hash every rebuild, so Input Monitoring must be removed and re-added after each install.
-- A sandboxed build with a different signature but an existing container blocks at launch on a hidden "access data from other apps" prompt.
-- In zsh, `log` is a builtin; use `/usr/bin/log show --predicate 'process == "Battery for Keychron"' --info`.
+- Ad-hoc builds change code hash every rebuild, so Input Monitoring must be removed and re-added after each install. Just toggling an existing entry is not enough; `tccutil reset ListenEvent dev.chamberneezy.BatteryForKeychron` and relaunch gives a clean prompt. The menu shows "Keyboard: Allow Input Monitoring, then relaunch" in this state.
+- While any app holds Secure Input (password field focused, Terminal's Secure Keyboard Entry, or an app stuck with it on), macOS returns `kIOReturnNotPermitted` (0xE00002E2) for every keyboard HID read even though open succeeds and Input Monitoring is granted. Mice and BLE devices are unaffected. Find the holder with `ioreg -l -w 0 -d 1 | grep -o '"kCGSSessionSecureInputPID"=[0-9]*'` (nothing printed means it is off). The menu shows "Blocked by <app> (Secure Input)" with ⚠️ in the menu bar, and `HIDManager` retries every 30 s.
+- Secure Input can get stuck for the whole login session. Seen 2026-10-07: held by Xcode, then by a dead pid after Xcode quit, then by `loginwindow` after a lock/unlock. Quitting the holder, lock/unlock with password, and Enable/DisableSecureEventInput from a script did not clear it; only logout or restart resets it. No app-side bypass exists without root: `kIOHIDOptionsTypeSeizeDevice` returns `kIOReturnNotPrivileged` (0xE00002C1), and a root process started via `osascript ... with administrator privileges` has no Input Monitoring grant.
+- `tools/hid-battery-probe.swift` performs the same read as the app outside the sandbox (`swift tools/hid-battery-probe.swift`, run from a terminal that has Input Monitoring). Use it to tell an app problem from a system block before touching the code.
+- Do not rebuild or reinstall while diagnosing a permission problem: each rebuild invalidates the Input Monitoring grant and adds a second failure on top of the first.
+
+## State (2026-10-08)
+
+v2.0.1 adds the blocked/"Allow Input Monitoring" menu rows and the 30 s retry. Confirmed 2026-10-08 on the K6: once Secure Input was no longer held, the read succeeded in the app and in the probe with no code change and without a restart, which confirms Secure Input as the cause of the 2026-10-07 outage. What released it is unknown.
+
+Unverified report from a K7 user on macOS 27.0.1 with v2.0.0 (the upstream issue it was posted on has since been removed): the level only changes after a restart, and stays the same on manual refresh and on relaunching the app. Since a relaunch still showed a value, their reads succeeded and returned an old number, so this is not the Secure Input block. Whether the K6 value changes within a session has not been checked.
 
 ## Releases
 

@@ -8,6 +8,8 @@ class StatusMenuController: NSObject {
         let name: String
         var level: Int
         var iconName: String
+        // Why there is no level (e.g. Secure Input is blocking the keyboard); nil means plain "Disconnected"
+        var status: String?
     }
 
     private var devices: [String: DeviceInfo] = [:]
@@ -87,13 +89,13 @@ class StatusMenuController: NSObject {
         statusItem.menu = menu
     }
 
-    func updateBatteryDisplay(uuid: String, name: String, level: Int, defaultIcon: String? = nil) {
+    func updateBatteryDisplay(uuid: String, name: String, level: Int, defaultIcon: String? = nil, status: String? = nil) {
         guard statusItem.button != nil else { return }
 
         // Load saved icon preference, else the source's hint, else a guess from the name
         let savedIcon = UserDefaults.standard.string(forKey: "icon_\(uuid)") ?? defaultIcon ?? guessIcon(forName: name)
 
-        devices[uuid] = DeviceInfo(name: name, level: level, iconName: savedIcon)
+        devices[uuid] = DeviceInfo(name: name, level: level, iconName: savedIcon, status: status)
         updateDeviceMenuItem(uuid: uuid)
         updateMainStatusItem()
     }
@@ -101,7 +103,7 @@ class StatusMenuController: NSObject {
     private func updateDeviceMenuItem(uuid: String) {
         guard let info = devices[uuid], let menu = statusItem.menu else { return }
 
-        let title = "\(iconForName(info.iconName)) \(info.name): \(info.level >= 0 ? "\(info.level)%" : "Disconnected")"
+        let title = "\(iconForName(info.iconName)) \(info.name): \(info.level >= 0 ? "\(info.level)%" : (info.status ?? "Disconnected"))"
 
         if let existingItem = deviceMenuItems[uuid] {
             existingItem.title = title
@@ -134,11 +136,11 @@ class StatusMenuController: NSObject {
     private func updateMainStatusItem() {
         guard let button = statusItem.button else { return }
 
-        // Get all active devices sorted by name
-        let activeDevices = devices.values.filter { $0.level >= 0 }.sorted(by: { $0.name < $1.name })
+        // Get all active devices sorted by name; a blocked device stays visible so the missing level is noticed
+        let activeDevices = devices.values.filter { $0.level >= 0 || $0.status != nil }.sorted(by: { $0.name < $1.name })
 
         // Set tooltip to show all devices on hover
-        let tooltipLines = activeDevices.map { "\(iconForName($0.iconName)) \($0.name): \($0.level)%" }
+        let tooltipLines = activeDevices.map { "\(iconForName($0.iconName)) \($0.name): \($0.level >= 0 ? "\($0.level)%" : ($0.status ?? ""))" }
         button.toolTip = tooltipLines.isEmpty ? nil : tooltipLines.joined(separator: "\n")
 
         if activeDevices.isEmpty {
@@ -173,7 +175,7 @@ class StatusMenuController: NSObject {
                 .font: NSFont.menuBarFont(ofSize: 0)
             ]
 
-            let text = "\(iconForName(device.iconName)) \(device.level)%"
+            let text = "\(iconForName(device.iconName)) \(device.level >= 0 ? "\(device.level)%" : "⚠️")"
             fullAttributedTitle.append(NSAttributedString(string: text, attributes: attributes))
         }
 

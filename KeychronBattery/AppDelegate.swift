@@ -54,7 +54,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                let name = userInfo["name"] as? String,
                let level = userInfo["level"] as? Int {
                 self?.logger.info("Received Bluetooth battery update for \(name): \(level)%")
-                self?.statusMenuController?.updateBatteryDisplay(uuid: uuid, name: name, level: level, defaultIcon: userInfo["icon"] as? String)
+                self?.statusMenuController?.updateBatteryDisplay(uuid: uuid, name: name, level: level, defaultIcon: userInfo["icon"] as? String, status: userInfo["status"] as? String)
                 self?.lowBatteryNotifier.check(uuid: uuid, name: name, level: level)
             }
         }
@@ -70,6 +70,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
             self.bluetoothMonitor.start()
+            self.hidManager.requestBatteryUpdate()
             self.scheduleStartupRetries()
         }
 

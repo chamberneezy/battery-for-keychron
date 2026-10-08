@@ -74,6 +74,7 @@ Click the menu bar item to see:
 
 **The keyboard doesn't appear, only the mouse**
 - Check Input Monitoring is on for the app (remove and re-add it after an update), then quit and reopen the app.
+- If the keyboard row says **Blocked by … (Secure Input)**, an app is holding macOS password-entry mode, and macOS refuses keyboard battery reads until it lets go. Quit the app that is named. If it names `loginwindow` or stays blocked, log out and back in, or restart. The level appears on its own within 30 seconds once the block is gone.
 - Check your keyboard is connected in System Settings → Bluetooth.
 
 **Shows `--%`**

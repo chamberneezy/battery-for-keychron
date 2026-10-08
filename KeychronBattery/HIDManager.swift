@@ -1,5 +1,6 @@
 import Foundation
 import IOKit.hid
+import AppKit
 import os
 
 extension Notification.Name {
@@ -29,9 +30,13 @@ class HIDManager {
         let uuid: String
         let name: String
         let icon: String
-        let element: IOHIDElement
+        let element: IOHIDElement? // nil only for the "no access" placeholder row
     }
     private var batteryDevices: [IOHIDDevice: BatteryDevice] = [:]
+    // Devices that have delivered at least one reading; a blocked read keeps showing the last level for these
+    private var devicesWithReading: Set<IOHIDDevice> = []
+    private var blockedRetryPending = false
+    private let blockedRetryInterval: TimeInterval = 30
     private var genericManager: IOHIDManager?
     private let batteryStrengthUsage = 0x20 // HID Usage Tables: Generic Device Controls / Battery Strength
     private let getValueWithUpdate: IOOptionBits = 0x00020000 // kIOHIDDeviceGetValueWithUpdate (not bridged to Swift)
@@ -192,35 +197,80 @@ class HIDManager {
 
     private func unregisterBatteryDevice(_ device: IOHIDDevice) {
         guard let info = batteryDevices.removeValue(forKey: device) else { return }
+        devicesWithReading.remove(device)
         logger.info("🔌 \(info.name) disconnected")
         postBattery(info: info, level: -1)
     }
 
     private func readBattery(device: IOHIDDevice, info: BatteryDevice) {
+        guard let element = info.element else { return }
         // The cached value is 0 until the device sends a report, so force a GET_REPORT
-        var value = Unmanaged.passUnretained(IOHIDValueCreateWithIntegerValue(kCFAllocatorDefault, info.element, 0, 0))
-        let result = IOHIDDeviceGetValueWithOptions(device, info.element, &value, getValueWithUpdate)
+        var value = Unmanaged.passUnretained(IOHIDValueCreateWithIntegerValue(kCFAllocatorDefault, element, 0, 0))
+        let result = IOHIDDeviceGetValueWithOptions(device, element, &value, getValueWithUpdate)
         guard result == kIOReturnSuccess else {
-            logger.error("⚠️ Battery read failed for \(info.name): \(String(format: "0x%08X", result))")
+            logger.error("⚠️ Battery read failed for \(info.name, privacy: .public): \(String(format: "0x%08X", result), privacy: .public)")
+            if result == kIOReturnNotPermitted { handleBlockedRead(device: device, info: info) }
             return
         }
         reportBattery(device: device, level: IOHIDValueGetIntegerValue(value.takeUnretainedValue()))
     }
 
+    // macOS refuses every read from a keyboard while any app holds Secure Input (password fields,
+    // Terminal's Secure Keyboard Entry, or an app that got stuck with it on). Input Monitoring does not override this.
+    private func handleBlockedRead(device: IOHIDDevice, info: BatteryDevice) {
+        let reason: String
+        if let blocker = secureInputOwner() {
+            reason = "Blocked by \(blocker) (Secure Input)"
+        } else if IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) != kIOHIDAccessTypeGranted {
+            reason = "Needs Input Monitoring"
+        } else {
+            reason = "Blocked by macOS"
+        }
+        logger.error("🔒 \(info.name, privacy: .public): \(reason, privacy: .public)")
+
+        if !devicesWithReading.contains(device) {
+            postBattery(info: info, level: -1, status: reason)
+        }
+
+        // Nothing announces the end of Secure Input, so poll gently until the read goes through
+        guard !blockedRetryPending else { return }
+        blockedRetryPending = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + blockedRetryInterval) { [weak self] in
+            guard let self = self else { return }
+            self.blockedRetryPending = false
+            for (device, info) in self.batteryDevices {
+                self.readBattery(device: device, info: info)
+            }
+        }
+    }
+
+    // Name of the app holding Secure Input, or nil when it is off
+    private func secureInputOwner() -> String? {
+        let root = IORegistryGetRootEntry(kIOMainPortDefault)
+        defer { IOObjectRelease(root) }
+        guard let sessions = IORegistryEntryCreateCFProperty(root, "IOConsoleUsers" as CFString, kCFAllocatorDefault, 0)?
+            .takeRetainedValue() as? [[String: Any]] else { return nil }
+        guard let pid = sessions.compactMap({ $0["kCGSSessionSecureInputPID"] as? Int }).first else { return nil }
+        return NSRunningApplication(processIdentifier: pid_t(pid))?.localizedName ?? "another app"
+    }
+
     private func reportBattery(device: IOHIDDevice, level: Int) {
         // 0 is what an un-refreshed element reports, so treat it as "no reading" rather than an empty battery
         guard let info = batteryDevices[device], (1...100).contains(level) else { return }
+        devicesWithReading.insert(device)
         postBattery(info: info, level: level)
     }
 
-    private func postBattery(info: BatteryDevice, level: Int) {
+    private func postBattery(info: BatteryDevice, level: Int, status: String? = nil) {
         DispatchQueue.main.async {
-            NotificationCenter.default.post(name: .didUpdateBluetoothBattery, object: nil, userInfo: [
+            var userInfo: [String: Any] = [
                 "uuid": info.uuid,
                 "name": info.name,
                 "level": level,
                 "icon": info.icon
-            ])
+            ]
+            userInfo["status"] = status
+            NotificationCenter.default.post(name: .didUpdateBluetoothBattery, object: nil, userInfo: userInfo)
         }
     }
 
@@ -391,6 +441,12 @@ class HIDManager {
     // MARK: - Battery Communication Logic
 
     func requestBatteryUpdate() {
+            // Without Input Monitoring no keyboard is even listed, so say so instead of showing nothing
+            if IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) != kIOHIDAccessTypeGranted {
+                let placeholder = BatteryDevice(uuid: "HID-ACCESS", name: "Keyboard", icon: "keyboard", element: nil)
+                postBattery(info: placeholder, level: -1, status: "Allow Input Monitoring, then relaunch")
+            }
+
             for (device, info) in batteryDevices {
                 readBattery(device: device, info: info)
             }
